@@ -18,6 +18,7 @@ type Request struct {
 type Response struct {
 	NewWorldSlice  [][]byte
 	CompletedTurns int
+	AliveCells     int
 }
 
 func calculateNextState(height, width int, world [][]byte) [][]byte {
@@ -53,6 +54,20 @@ func calculateNextState(height, width int, world [][]byte) [][]byte {
 	return newWorld
 }
 
+func calculateAliveCells(p Params, world [][]byte) []util.Cell {
+	cellCoordsSlice := []util.Cell{}
+
+	for row := 0; row < p.ImageHeight; row++ {
+		for column := 0; column < p.ImageWidth; column++ {
+			if world[row][column] == 255 {
+				cellCoordsSlice = append(cellCoordsSlice, util.Cell{X: column, Y: row})
+			}
+		}
+	}
+
+	return cellCoordsSlice
+}
+
 func (ct *CalculateTurnService) CalculateTurns(request Request, response *Response) error {
 	fmt.Println("accepted listener")
 
@@ -63,6 +78,19 @@ func (ct *CalculateTurnService) CalculateTurns(request Request, response *Respon
 		world = calculateNextState(request.ImageHeight, request.ImageWidth, world)
 		completedTurns = i + 1
 	}
+
+	response.NewWorldSlice = world
+	response.CompletedTurns = completedTurns
+	response.AliveCells = 0
+
+	fmt.Printf("Processed %d turns for %dx%d grid\n", completedTurns, request.ImageWidth, request.ImageHeight)
+	return nil
+}
+
+func (ga *GetAliveCells) GetAliveCells() {
+	fmt.Println("accepted listener")
+
+	calculateAliveCells()
 
 	response.NewWorldSlice = world
 	response.CompletedTurns = completedTurns
