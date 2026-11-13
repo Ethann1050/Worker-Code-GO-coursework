@@ -54,6 +54,8 @@ func calculateNextState(height, width int, world [][]byte) [][]byte {
 }
 
 func (ct *CalculateTurnService) CalculateTurns(request Request, response *Response) error {
+	fmt.Println("accepted listener")
+
 	world := request.WorldSlice
 	completedTurns := 0
 
@@ -84,4 +86,5 @@ func main() {
 
 	fmt.Println("Listening on 0.0.0.0:8080...")
 	rpc.Accept(listener)
+	fmt.Println("accepted listener")
 }
