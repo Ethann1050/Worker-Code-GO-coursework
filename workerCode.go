@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	"sync"
 )
 
-type CalculateTurnService struct{}
+type CalculateTurnService struct {
+	mu             sync.Mutex
+	world          [][]byte
+	completedTurns int
+	height         int
+	width          int
+}
 
 type Request struct {
 	WorldSlice  [][]byte
@@ -20,6 +27,8 @@ type Response struct {
 	CompletedTurns int
 	AliveCells     int
 }
+
+type EmptyArgs struct{}
 
 func calculateNextState(height, width int, world [][]byte) [][]byte {
 	newWorld := make([][]byte, height)
@@ -54,48 +63,58 @@ func calculateNextState(height, width int, world [][]byte) [][]byte {
 	return newWorld
 }
 
-func calculateAliveCells(p Params, world [][]byte) []util.Cell {
-	cellCoordsSlice := []util.Cell{}
-
-	for row := 0; row < p.ImageHeight; row++ {
-		for column := 0; column < p.ImageWidth; column++ {
+func countAliveCells(height, width int, world [][]byte) int {
+	count := 0
+	for row := 0; row < height; row++ {
+		for column := 0; column < width; column++ {
 			if world[row][column] == 255 {
-				cellCoordsSlice = append(cellCoordsSlice, util.Cell{X: column, Y: row})
+				count++
 			}
 		}
 	}
-
-	return cellCoordsSlice
+	return count
 }
 
 func (ct *CalculateTurnService) CalculateTurns(request Request, response *Response) error {
-	fmt.Println("accepted listener")
+	fmt.Println("Accepted CalculateTurns request")
 
-	world := request.WorldSlice
-	completedTurns := 0
+	ct.mu.Lock()
+	ct.world = request.WorldSlice
+	ct.height = request.ImageHeight
+	ct.width = request.ImageWidth
+	ct.completedTurns = 0
+	ct.mu.Unlock()
 
 	for i := 0; i < request.Turns; i++ {
-		world = calculateNextState(request.ImageHeight, request.ImageWidth, world)
-		completedTurns = i + 1
+		ct.mu.Lock()
+		ct.world = calculateNextState(ct.height, ct.width, ct.world)
+		ct.completedTurns = i + 1
+		ct.mu.Unlock()
 	}
 
-	response.NewWorldSlice = world
-	response.CompletedTurns = completedTurns
-	response.AliveCells = 0
+	ct.mu.Lock()
+	response.NewWorldSlice = ct.world
+	response.CompletedTurns = ct.completedTurns
+	response.AliveCells = countAliveCells(ct.height, ct.width, ct.world)
+	ct.mu.Unlock()
 
-	fmt.Printf("Processed %d turns for %dx%d grid\n", completedTurns, request.ImageWidth, request.ImageHeight)
+	fmt.Printf("Processed %d turns for %dx%d grid\n", response.CompletedTurns, request.ImageWidth, request.ImageHeight)
 	return nil
 }
 
-func (ga *GetAliveCells) GetAliveCells() {
-	fmt.Println("accepted listener")
+// GetAliveCells handles the ticker request from the local controller every 2 seconds
+func (ct *CalculateTurnService) GetAliveCells(args *EmptyArgs, response *Response) error {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
 
-	calculateAliveCells()
+	if ct.world == nil {
+		response.CompletedTurns = 0
+		response.AliveCells = 0
+		return nil
+	}
 
-	response.NewWorldSlice = world
-	response.CompletedTurns = completedTurns
-
-	fmt.Printf("Processed %d turns for %dx%d grid\n", completedTurns, request.ImageWidth, request.ImageHeight)
+	response.CompletedTurns = ct.completedTurns
+	response.AliveCells = countAliveCells(ct.height, ct.width, ct.world)
 	return nil
 }
 
@@ -114,5 +133,4 @@ func main() {
 
 	fmt.Println("Listening on 0.0.0.0:8080...")
 	rpc.Accept(listener)
-	fmt.Println("accepted listener")
 }
